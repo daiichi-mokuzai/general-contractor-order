@@ -48,4 +48,162 @@ const rawSnapshot=snapshot;
 snapshot=()=>({...rawSnapshot(),_gcDemo:true});
 history.replaceState(snapshot(),'','#catalog');
 originalBrowse();
-</script></body></html>
+
+</script>
+
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<script>
+const ORDER_WORKER_URL =
+  "https://daiichi-order-line.madhouse202.workers.dev/order";
+
+const ORDER_TURNSTILE_SITE_KEY =
+  "0x4AAAAAAFsKa-d7pIGRg7Ap";
+
+let orderSending = false;
+let orderWidgetId = null;
+
+const previousCheckout = checkout;
+
+checkout = function () {
+  previousCheckout();
+
+  const form = document.getElementById("order");
+  if (!form) return;
+
+  const notice = form.querySelector(".notice");
+  if (notice) {
+    notice.textContent =
+      "在庫・納期を確認後、ご連絡いたします。現在は接続テスト中です。";
+  }
+
+  const button = form.querySelector('button[type="submit"]');
+  if (button) {
+    button.textContent = "注文内容を送信する";
+    button.id = "order-send-button";
+  }
+
+  const widget = document.createElement("div");
+  widget.id = "order-turnstile";
+  widget.style.margin = "16px 0";
+
+  const status = document.createElement("p");
+  status.id = "order-status";
+  status.setAttribute("role", "status");
+
+  button.before(widget);
+  button.before(status);
+
+  orderWidgetId = null;
+
+  const render = () => {
+    if (!document.getElementById("order-turnstile")) return;
+    if (!window.turnstile) {
+      setTimeout(render, 200);
+      return;
+    }
+
+    orderWidgetId = window.turnstile.render(
+      "#order-turnstile",
+      { sitekey: ORDER_TURNSTILE_SITE_KEY }
+    );
+  };
+
+  render();
+};
+
+finish = async function (event) {
+  event.preventDefault();
+
+  if (orderSending) return;
+
+  const form = event.target;
+  const status = document.getElementById("order-status");
+  const button = document.getElementById("order-send-button");
+
+  if (!window.turnstile || orderWidgetId === null) {
+    status.textContent = "認証の読み込みが完了していません。";
+    return;
+  }
+
+  const token = window.turnstile.getResponse(orderWidgetId);
+
+  if (!token) {
+    status.textContent = "認証を完了してください。";
+    return;
+  }
+
+  const f = Object.fromEntries(new FormData(form).entries());
+
+  const body = {
+    company: f.company,
+    contact: f.contact,
+    phone: f.phone,
+    site: f.site,
+    address: f.address,
+    delivery: f.date,
+    turnstileToken: token,
+    items: cart.map(p => ({
+      id: p.id,
+      qty: p.qty
+    }))
+  };
+
+  orderSending = true;
+  button.disabled = true;
+  button.textContent = "送信中…";
+  status.textContent = "注文内容を確認しています…";
+
+  try {
+    const response = await fetch(ORDER_WORKER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.ok) {
+      throw new Error(result.error || "送信できませんでした");
+    }
+
+    step = "done";
+    cart = [];
+
+    app.innerHTML = `
+      <div class="card success" style="text-align:center;padding:32px 16px">
+        <h2 style="font-size:26px;line-height:1.7">
+          ご注文ありがとうございます。<br>
+          お承りいたしました
+        </h2>
+        <p style="font-size:21px;line-height:1.8">
+          納期、在庫の確認をして<br>
+          ご連絡をいたします
+        </p>
+        <p>商品代金合計：${yen(result.total)}</p>
+      </div>
+    `;
+
+    renderCart();
+
+  } catch (error) {
+    status.textContent =
+      "注文は完了していません：" + error.message +
+      "。再送信前に受付状況をご確認ください。";
+
+    if (window.turnstile && orderWidgetId !== null) {
+      window.turnstile.reset(orderWidgetId);
+    }
+
+  } finally {
+    orderSending = false;
+
+    if (document.getElementById("order-send-button")) {
+      button.disabled = false;
+      button.textContent = "注文内容を送信する";
+    }
+  }
+};
+</script>
+</body></html>
