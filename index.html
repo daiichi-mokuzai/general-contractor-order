@@ -134,7 +134,13 @@ finish = async function (event) {
 
   const f = Object.fromEntries(new FormData(form).entries());
 
+  if (!window.currentOrderId) {
+    window.currentOrderId = crypto.randomUUID();
+  }
+
   const body = {
+    orderId: window.currentOrderId,
+    notes: f.notes || "",
     company: f.company,
     contact: f.contact,
     phone: f.phone,
@@ -169,6 +175,7 @@ finish = async function (event) {
     }
 
     step = "done";
+    window.currentOrderId = null;
     cart = [];
 
     app.innerHTML = `
