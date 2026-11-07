@@ -108,8 +108,41 @@ checkout = function () {
     );
   };
 
+  
   render();
+
+  button.disabled = true;
+  button.textContent = "受付状況を確認中…";
+
+  fetch(ORDER_WORKER_URL.replace(/\/order$/, "/status"), {
+    cache: "no-store"
+  })
+    .then(response => {
+      if (!response.ok) throw new Error("確認失敗");
+      return response.json();
+    })
+    .then(data => {
+      if (!button.isConnected) return;
+
+      if (data.accepting === true) {
+        button.disabled = false;
+        button.textContent = "注文内容を送信する";
+        status.textContent = "";
+      } else {
+        button.disabled = true;
+        button.textContent = "現在、注文受付を停止しています";
+        status.textContent = "注文受付の再開までお待ちください。";
+      }
+    })
+    .catch(() => {
+      if (!button.isConnected) return;
+      button.disabled = true;
+      button.textContent = "現在、注文できません";
+      status.textContent =
+        "受付状況を確認できません。時間をおいてお試しください。";
+    });
 };
+
 
 finish = async function (event) {
   event.preventDefault();
